@@ -1,20 +1,51 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { MORSE_TABLE, REVERSE_TABLE, textToMorse, morseToText } from '../utils/morse-code'
 import type { TrainMode, HistoryEntry } from '../types'
 
+const STORAGE_KEY = 'morse-trainer-data'
+
+interface PersistedData {
+  score: { correct: number; total: number }
+  history: HistoryEntry[]
+  wpm: number
+  frequency: number
+  volume: number
+  trainMode: TrainMode
+}
+
+function loadFromStorage(): Partial<PersistedData> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return JSON.parse(raw)
+  } catch (e) {
+    console.warn('Failed to load training data from localStorage')
+  }
+  return {}
+}
+
+function saveToStorage(data: PersistedData) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+  } catch (e) {
+    console.warn('Failed to save training data to localStorage')
+  }
+}
+
 export const useMorseStore = defineStore('morse', () => {
+  const saved = loadFromStorage()
+
   const inputText = ref('')
   const morseOutput = ref('')
   const decodedText = ref('')
-  const wpm = ref(15)
-  const frequency = ref(700)
-  const volume = ref(0.6)
-  const trainMode = ref<TrainMode>('charToCode')
-  const history = ref<HistoryEntry[]>([])
+  const wpm = ref(saved.wpm ?? 15)
+  const frequency = ref(saved.frequency ?? 700)
+  const volume = ref(saved.volume ?? 0.6)
+  const trainMode = ref<TrainMode>(saved.trainMode ?? 'charToCode')
+  const history = ref<HistoryEntry[]>(saved.history ?? [])
   const quizChar = ref('')
   const userAnswer = ref('')
-  const score = ref({ correct: 0, total: 0 })
+  const score = ref(saved.score ?? { correct: 0, total: 0 })
   const isPlaying = ref(false)
   let audioCtx: AudioContext | null = null
   let currentOscillator: OscillatorNode | null = null
@@ -89,6 +120,21 @@ export const useMorseStore = defineStore('morse', () => {
     score.value = { correct: 0, total: 0 }
     history.value = []
   }
+
+  watch(
+    [score, history, wpm, frequency, volume, trainMode],
+    () => {
+      saveToStorage({
+        score: { ...score.value },
+        history: history.value,
+        wpm: wpm.value,
+        frequency: frequency.value,
+        volume: volume.value,
+        trainMode: trainMode.value
+      })
+    },
+    { deep: true }
+  )
 
   return {
     inputText, morseOutput, decodedText, wpm, frequency, volume,
